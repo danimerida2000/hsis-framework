@@ -1,0 +1,50 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - assumes existing users table in the system
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tasks     Task[]
+
+  @@map("users")
+}
+
+// Task model per ARCHITECTURE.md Section 4
+model Task {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  title       String    @db.VarChar(255)
+  description String?
+  dueDate     DateTime? @map("due_date")
+  priority    Priority  @default(MEDIUM)
+  isCompleted Boolean   @default(false) @map("is_completed")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes for performance (NFR-002)
+  @@index([userId])
+  @@index([userId, isCompleted])
+  @@index([userId, dueDate])
+  @@map("tasks")
+}
+
+enum Priority {
+  LOW    @map("low")
+  MEDIUM @map("medium")
+  HIGH   @map("high")
+}

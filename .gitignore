@@ -1,0 +1,33 @@
+# HSIS Agent Configurations & Keys (Keep private!)
+.claude/
+.codex/
+.gemini/
+.swarm/artifacts/
+.swarm/logs/
+.swarm/status/
+.swarm/escalations/
+*.log
+
+# Environment & Secrets
+.env
+.env.local
+secrets/
+credentials/
+hsis_keys.sh
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# System
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Build artifacts (if any)
+dist/
+build/

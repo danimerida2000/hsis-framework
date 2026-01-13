@@ -1,0 +1,34 @@
+{
+  "project": "task-management",
+  "initialized": "2024-01-20T09:00:00Z",
+  "phases": {
+    "pm": {
+      "status": "completed",
+      "started": "2024-01-20T09:00:00Z",
+      "completed": "2024-01-20T12:00:00Z",
+      "gate_passed": true,
+      "artifacts": ["docs/PRD.md"]
+    },
+    "architect": {
+      "status": "completed",
+      "started": "2024-01-21T09:00:00Z",
+      "completed": "2024-01-21T14:00:00Z",
+      "gate_passed": true,
+      "artifacts": [
+        "docs/ARCHITECTURE.md",
+        "docs/IMPLEMENTATION_PLAN.md",
+        "adrs/ADR-001.md"
+      ]
+    },
+    "developer": {
+      "status": "ready",
+      "started": null,
+      "completed": null,
+      "gate_passed": false,
+      "artifacts": []
+    }
+  },
+  "current_phase": "developer",
+  "blockers": [],
+  "escalations": []
+}
