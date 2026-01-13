@@ -1,0 +1,339 @@
+# HSIS Gate Verification Workflow
+# Hierarchical Specialized Intelligence Swarm
+#
+# This workflow is manually triggered to verify specific HSIS gates
+# Useful for validating artifacts during development phases
+
+name: HSIS Gate Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      gate:
+        description: 'Gate to verify'
+        required: true
+        type: choice
+        options:
+          - all
+          - pm
+          - architect
+          - developer
+      fail_on_warning:
+        description: 'Fail on warnings'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  # ============================================================================
+  # PM Gate
+  # ============================================================================
+  pm-gate:
+    name: PM Gate Verification
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.gate == 'all' || github.event.inputs.gate == 'pm' }}
+    
+    outputs:
+      status: ${{ steps.verify.outputs.status }}
+      errors: ${{ steps.verify.outputs.errors }}
+      warnings: ${{ steps.verify.outputs.warnings }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Verify PM Gate
+        id: verify
+        run: |
+          ERRORS=0
+          WARNINGS=0
+          
+          echo "## PM Gate Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check PRD exists
+          if [ -f "docs/PRD.md" ]; then
+            echo "✅ PRD.md exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ PRD.md not found" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+          
+          if [ -f "docs/PRD.md" ]; then
+            # Check for numbered requirements
+            if grep -qE "FR-[0-9]{3}" docs/PRD.md; then
+              FR_COUNT=$(grep -cE "FR-[0-9]{3}" docs/PRD.md)
+              echo "✅ Functional Requirements found ($FR_COUNT FR-### entries)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ No FR-### numbered requirements found" >> $GITHUB_STEP_SUMMARY
+              ERRORS=$((ERRORS + 1))
+            fi
+            
+            if grep -qE "NFR-[0-9]{3}" docs/PRD.md; then
+              NFR_COUNT=$(grep -cE "NFR-[0-9]{3}" docs/PRD.md)
+              echo "✅ Non-Functional Requirements found ($NFR_COUNT NFR-### entries)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ No NFR-### numbered requirements found" >> $GITHUB_STEP_SUMMARY
+              WARNINGS=$((WARNINGS + 1))
+            fi
+            
+            # Check for acceptance criteria
+            if grep -qi "acceptance criteria" docs/PRD.md; then
+              echo "✅ Acceptance Criteria section found" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Acceptance Criteria section missing" >> $GITHUB_STEP_SUMMARY
+              ERRORS=$((ERRORS + 1))
+            fi
+            
+            # Check required sections
+            for section in "Problem Statement" "Target Users" "Scope" "Success Metrics" "Risks"; do
+              if grep -qi "$section" docs/PRD.md; then
+                echo "✅ $section section found" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ $section section may be missing" >> $GITHUB_STEP_SUMMARY
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            done
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Errors: $ERRORS" >> $GITHUB_STEP_SUMMARY
+          echo "- Warnings: $WARNINGS" >> $GITHUB_STEP_SUMMARY
+          
+          if [ $ERRORS -eq 0 ]; then
+            echo "**Status: ✅ PASS**" >> $GITHUB_STEP_SUMMARY
+            echo "status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "**Status: ❌ FAIL**" >> $GITHUB_STEP_SUMMARY
+            echo "status=fail" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+          echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
+      
+      - name: Fail if errors
+        if: steps.verify.outputs.status == 'fail'
+        run: exit 1
+      
+      - name: Fail if warnings (when requested)
+        if: ${{ github.event.inputs.fail_on_warning == 'true' && steps.verify.outputs.warnings > 0 }}
+        run: exit 1
+
+  # ============================================================================
+  # Architect Gate
+  # ============================================================================
+  architect-gate:
+    name: Architect Gate Verification
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.gate == 'all' || github.event.inputs.gate == 'architect' }}
+    needs: [pm-gate]
+    # Always run if pm-gate passed or was skipped
+    
+    outputs:
+      status: ${{ steps.verify.outputs.status }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Verify Architect Gate
+        id: verify
+        run: |
+          ERRORS=0
+          WARNINGS=0
+          
+          echo "## Architect Gate Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check ARCHITECTURE.md exists
+          if [ -f "docs/ARCHITECTURE.md" ]; then
+            echo "✅ ARCHITECTURE.md exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ ARCHITECTURE.md not found" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+          
+          # Check IMPLEMENTATION_PLAN.md exists
+          if [ -f "docs/IMPLEMENTATION_PLAN.md" ]; then
+            echo "✅ IMPLEMENTATION_PLAN.md exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ IMPLEMENTATION_PLAN.md not found" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+          
+          if [ -f "docs/ARCHITECTURE.md" ]; then
+            # Check required sections
+            for section in "System Overview" "Component" "Data Model" "API" "Security" "Definition of Done"; do
+              if grep -qi "$section" docs/ARCHITECTURE.md; then
+                echo "✅ $section section found" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ $section section may be missing" >> $GITHUB_STEP_SUMMARY
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            done
+            
+            # Check requirement mapping
+            if grep -qE "FR-[0-9]{3}|NFR-[0-9]{3}" docs/ARCHITECTURE.md; then
+              echo "✅ Requirements mapped in architecture" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ No requirement IDs found in architecture" >> $GITHUB_STEP_SUMMARY
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+          
+          # Check for ADRs
+          ADR_COUNT=$(find adrs -name "ADR-*.md" 2>/dev/null | wc -l)
+          if [ $ADR_COUNT -gt 0 ]; then
+            echo "✅ Found $ADR_COUNT ADR(s)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No ADRs found" >> $GITHUB_STEP_SUMMARY
+            WARNINGS=$((WARNINGS + 1))
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Errors: $ERRORS" >> $GITHUB_STEP_SUMMARY
+          echo "- Warnings: $WARNINGS" >> $GITHUB_STEP_SUMMARY
+          
+          if [ $ERRORS -eq 0 ]; then
+            echo "**Status: ✅ PASS**" >> $GITHUB_STEP_SUMMARY
+            echo "status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "**Status: ❌ FAIL**" >> $GITHUB_STEP_SUMMARY
+            echo "status=fail" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Fail if errors
+        if: steps.verify.outputs.status == 'fail'
+        run: exit 1
+
+  # ============================================================================
+  # Developer Gate
+  # ============================================================================
+  developer-gate:
+    name: Developer Gate Verification
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.gate == 'all' || github.event.inputs.gate == 'developer' }}
+    needs: [architect-gate]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+        continue-on-error: true
+      
+      - name: Verify Developer Gate
+        id: verify
+        run: |
+          ERRORS=0
+          WARNINGS=0
+          
+          echo "## Developer Gate Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for source code
+          SRC_COUNT=$(find src -type f \( -name "*.ts" -o -name "*.js" -o -name "*.py" \) 2>/dev/null | wc -l)
+          if [ $SRC_COUNT -gt 0 ]; then
+            echo "✅ Source code found ($SRC_COUNT files)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ No source code found in src/" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+          
+          # Check for tests
+          TEST_COUNT=$(find tests -type f -name "*.test.*" -o -name "*_test.*" -o -name "test_*" 2>/dev/null | wc -l)
+          if [ $TEST_COUNT -gt 0 ]; then
+            echo "✅ Test files found ($TEST_COUNT files)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No test files found" >> $GITHUB_STEP_SUMMARY
+            WARNINGS=$((WARNINGS + 1))
+          fi
+          
+          # Check for implementation report
+          if [ -f "docs/IMPLEMENTATION_REPORT.md" ]; then
+            echo "✅ IMPLEMENTATION_REPORT.md exists" >> $GITHUB_STEP_SUMMARY
+            
+            if grep -qi "traceability" docs/IMPLEMENTATION_REPORT.md; then
+              echo "✅ Traceability matrix found" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ Traceability matrix may be missing" >> $GITHUB_STEP_SUMMARY
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          else
+            echo "❌ IMPLEMENTATION_REPORT.md not found" >> $GITHUB_STEP_SUMMARY
+            ERRORS=$((ERRORS + 1))
+          fi
+          
+          # Check CHANGELOG
+          if [ -f "CHANGELOG.md" ]; then
+            echo "✅ CHANGELOG.md exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ CHANGELOG.md not found" >> $GITHUB_STEP_SUMMARY
+            WARNINGS=$((WARNINGS + 1))
+          fi
+          
+          # Check README
+          if [ -f "README.md" ]; then
+            echo "✅ README.md exists" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ README.md not found" >> $GITHUB_STEP_SUMMARY
+            WARNINGS=$((WARNINGS + 1))
+          fi
+          
+          # Run tests if available
+          if [ -f "package.json" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+            if npm test 2>/dev/null; then
+              echo "✅ Tests pass" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Tests failed" >> $GITHUB_STEP_SUMMARY
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Errors: $ERRORS" >> $GITHUB_STEP_SUMMARY
+          echo "- Warnings: $WARNINGS" >> $GITHUB_STEP_SUMMARY
+          
+          if [ $ERRORS -eq 0 ]; then
+            echo "**Status: ✅ PASS**" >> $GITHUB_STEP_SUMMARY
+            echo "status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "**Status: ❌ FAIL**" >> $GITHUB_STEP_SUMMARY
+            echo "status=fail" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Fail if errors
+        if: steps.verify.outputs.status == 'fail'
+        run: exit 1
+
+  # ============================================================================
+  # Summary
+  # ============================================================================
+  summary:
+    name: Gate Summary
+    runs-on: ubuntu-latest
+    needs: [pm-gate, architect-gate, developer-gate]
+    if: always()
+    
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# HSIS Gate Verification Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Gate | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| PM Gate | ${{ needs.pm-gate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Architect Gate | ${{ needs.architect-gate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Developer Gate | ${{ needs.developer-gate.result }} |" >> $GITHUB_STEP_SUMMARY
