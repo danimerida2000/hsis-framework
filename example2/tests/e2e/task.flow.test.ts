@@ -21,35 +21,37 @@ const mockTasks: Map<string, {
   updatedAt: Date;
 }> = new Map();
 
-// Define mock implementations as plain functions to avoid being cleared by jest.clearAllMocks()
+// Define mock implementations as functions (not jest mocks with mockImplementation)
+// This avoids them being cleared by jest.clearAllMocks()
 const mockPrismaClient = {
   task: {
-    findMany: ({ where }: any) => {
+    findMany: ({ where }: { where: { userId: string; isCompleted?: boolean } }) => {
       const tasks = Array.from(mockTasks.values()).filter(
         task => task.userId === where.userId &&
           (where.isCompleted === undefined || task.isCompleted === where.isCompleted)
       );
       return Promise.resolve(tasks);
     },
-    findFirst: ({ where }: any) => {
+    findFirst: ({ where }: { where: { id: string; userId: string } }) => {
       const task = mockTasks.get(where.id);
       if (task && task.userId === where.userId) {
         return Promise.resolve(task);
       }
       return Promise.resolve(null);
     },
-    create: ({ data }: any) => {
-      const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    create: ({ data }: { data: Omit<typeof mockTasks extends Map<string, infer T> ? T : never, 'id' | 'createdAt' | 'updatedAt'> }) => {
+      const id = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
       const task = {
         id,
         ...data,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      mockTasks.set(id, task);
+      mockTasks.set(id, task as any);
       return Promise.resolve(task);
     },
-    update: ({ where, data }: any) => {
+    update: ({ where, data }: { where: { id: string }; data: Partial<any> }) => {
       const task = mockTasks.get(where.id);
       if (task) {
         const updated = { ...task, ...data, updatedAt: new Date() };
@@ -58,7 +60,7 @@ const mockPrismaClient = {
       }
       throw new Error('Task not found');
     },
-    delete: ({ where }: any) => {
+    delete: ({ where }: { where: { id: string } }) => {
       const task = mockTasks.get(where.id);
       if (task) {
         mockTasks.delete(where.id);
@@ -66,7 +68,7 @@ const mockPrismaClient = {
       }
       throw new Error('Task not found');
     },
-    count: ({ where }: any) => {
+    count: ({ where }: { where: { userId: string } }) => {
       const count = Array.from(mockTasks.values())
         .filter(task => task.userId === where.userId).length;
       return Promise.resolve(count);
@@ -124,8 +126,10 @@ async function makeRequest(
 }
 
 describe('Task E2E Tests', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let app: Application;
-  const _validToken = 'test-token-user-e2e';
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const validToken = 'test-token-user-e2e';
 
   beforeAll(() => {
     app = createApp(mockPrismaClient);
