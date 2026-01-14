@@ -3286,6 +3286,443 @@ rm -rf .swarm/{status,logs,artifacts}/*
 ./scripts/swarm-orchestrator.sh dev   # Re-run Developer
 ```
 
+### 14.4 Installation Issues
+
+#### Node.js Version Mismatch
+
+**Symptom:** `Error: The module was compiled against a different Node.js version`
+
+**Solution:**
+```bash
+# Check current version
+node --version
+
+# Install correct version using nvm
+nvm install 20
+nvm use 20
+
+# Rebuild native modules
+rm -rf node_modules
+npm install
+```
+
+#### npm Permission Denied (EACCES)
+
+**Symptom:** `EACCES: permission denied, access '/usr/local/lib/node_modules'`
+
+**Solution:**
+```bash
+# Option A: Use nvm (recommended)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+
+# Option B: Fix npm permissions
+mkdir ~/.npm-global
+npm config set prefix '~/.npm-global'
+echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### Python Dependency Conflicts
+
+**Symptom:** `ModuleNotFoundError` or version conflicts
+
+**Solution:**
+```bash
+# Use virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 14.5 API Key Issues
+
+#### Invalid API Key Format
+
+**Symptom:** `Error: Invalid API key format` or `401 Unauthorized`
+
+**Solution:**
+```bash
+# Verify key format
+echo $ANTHROPIC_API_KEY | head -c 10  # Should start with "sk-ant-"
+echo $OPENAI_API_KEY | head -c 5      # Should start with "sk-"
+echo $GOOGLE_AI_API_KEY | head -c 4   # Should start with "AIza"
+
+# Re-export if needed
+export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+```
+
+#### Rate Limiting (429 Errors)
+
+**Symptom:** `Error 429: Too Many Requests` or `rate_limit_exceeded`
+
+**Solution:**
+| Provider | Free Tier Limit | Solution |
+|----------|-----------------|----------|
+| Anthropic | ~40 req/min | Add delays, upgrade plan |
+| OpenAI | Varies by tier | Check usage dashboard |
+| Google AI | 60 req/min | Use exponential backoff |
+
+```bash
+# Add delay between phases
+SWARM_PHASE_DELAY=30 ./scripts/swarm-orchestrator.sh full
+```
+
+#### Key Not Found in Environment
+
+**Symptom:** `Error: ANTHROPIC_API_KEY not set`
+
+**Solution:**
+```bash
+# Check if credentials file is sourced
+cat ~/.bashrc | grep -i hsis
+
+# Source manually
+source ~/.config/hsis/credentials
+
+# Verify
+env | grep -E "(ANTHROPIC|OPENAI|GOOGLE)"
+```
+
+### 14.6 Docker Issues
+
+#### Permission Denied for Docker Socket
+
+**Symptom:** `Got permission denied while trying to connect to the Docker daemon socket`
+
+**Solution:**
+```bash
+# Add user to docker group
+sudo usermod -aG docker $USER
+
+# Apply changes (logout/login or use newgrp)
+newgrp docker
+
+# Verify
+docker ps
+```
+
+#### Docker Build Failures
+
+**Symptom:** Build errors during container creation
+
+**Common Fixes:**
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `no space left on device` | Full disk | `docker system prune -a` |
+| `network timeout` | DNS issues | Add `--network host` to build |
+| `permission denied` | File ownership | Check Dockerfile USER directive |
+
+```bash
+# Clean up Docker resources
+docker system prune -a --volumes
+
+# Build with verbose output
+docker build --progress=plain -t hsis-sandbox .
+```
+
+#### Container Networking Issues
+
+**Symptom:** Container can't reach external APIs
+
+**Solution:**
+```bash
+# Test network from container
+docker run --rm alpine ping -c 3 google.com
+
+# Use host network if needed
+docker run --network host your-image
+```
+
+### 14.7 Gate Verification Failures
+
+#### PM Gate Failures
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Missing requirement IDs | PRD not formatted | Re-run PM with explicit ID instructions |
+| No acceptance criteria | Incomplete PRD | Add AC-### for each FR |
+| Contradictions detected | Conflicting requirements | Review and resolve in intake |
+| Open questions untagged | Missing BLOCKER/NON-BLOCKER tags | Tag all open questions |
+
+```bash
+# Validate PRD manually
+./scripts/verify-gates.sh pm
+
+# Check specific sections
+grep -E "^FR-[0-9]+" docs/PRD.md    # Functional requirements
+grep -E "^NFR-[0-9]+" docs/PRD.md   # Non-functional requirements
+grep -E "^AC-[0-9]+" docs/PRD.md    # Acceptance criteria
+```
+
+#### Architect Gate Failures
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Requirements not mapped | Missing traceability table | Add mapping table to ARCHITECTURE.md |
+| Incomplete API contracts | Missing endpoints | Complete all REST/GraphQL specs |
+| No test strategy | Missing test section | Add test strategy section |
+| ADR missing | Undocumented decision | Create ADR for each key decision |
+
+```bash
+# Validate architecture
+./scripts/verify-gates.sh architect
+
+# Check traceability
+grep -c "FR-" docs/ARCHITECTURE.md   # Should match PRD count
+```
+
+#### Developer Gate Failures
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Tests failing | Implementation bugs | Debug and fix failing tests |
+| Coverage below 80% | Missing tests | Add tests for uncovered code |
+| Lint errors | Code style issues | Run `npm run lint:fix` |
+| Type errors | TypeScript issues | Run `npm run type-check` |
+| Security issues | Vulnerabilities found | Run `npm audit fix` |
+
+```bash
+# Run all developer checks
+npm run lint
+npm run type-check
+npm run test:coverage
+
+# View coverage report
+open coverage/lcov-report/index.html
+```
+
+### 14.8 MCP Server Issues
+
+#### Connection Timeout
+
+**Symptom:** `MCP server connection timed out` or `ECONNREFUSED`
+
+**Solution:**
+```bash
+# Check if server process is running
+ps aux | grep mcp-server
+
+# Test server manually
+npx @anthropic-ai/mcp-server-filesystem --help
+
+# Increase timeout in config
+# Add to settings.json:
+# "mcpTimeout": 30000
+```
+
+#### Server Not Found
+
+**Symptom:** `MCP server 'xxx' not found` or `Cannot find module`
+
+**Solution:**
+```bash
+# Install server globally
+npm install -g @anthropic-ai/mcp-server-filesystem
+
+# Or use npx (auto-installs)
+npx -y @anthropic-ai/mcp-server-filesystem .
+
+# Verify installation
+which mcp-server-filesystem
+```
+
+#### Tool Unavailable Errors
+
+**Symptom:** `Tool 'xxx' is not available`
+
+**Solution:**
+```bash
+# List available tools
+claude --mcp-debug
+
+# Check server configuration
+cat .claude/settings.json | jq '.mcpServers'
+
+# Restart Claude session
+claude --clear-cache
+```
+
+### 14.9 Frequently Asked Questions (FAQ)
+
+<details>
+<summary><strong>Can I use different AI models?</strong></summary>
+
+HSIS is designed for the specific capabilities of Gemini, Codex, and Claude. While you can experiment with other models, the constraint files and gate validators are optimized for:
+- **PM**: Gemini 2.5 Pro (requirements analysis)
+- **Architect**: GPT-5 Codex (system design)
+- **Developer**: Claude Opus 4.5 (implementation)
+
+Substituting models may require adjusting constraint files and prompts.
+
+</details>
+
+<details>
+<summary><strong>How do I reset a failed workflow?</strong></summary>
+
+```bash
+# Soft reset (keep artifacts, clear state)
+rm -rf .swarm/status/*
+
+# Hard reset (start completely fresh)
+rm -rf .swarm/{status,logs,artifacts}/*
+
+# Re-run from specific phase
+./scripts/swarm-orchestrator.sh pm       # From beginning
+./scripts/swarm-orchestrator.sh architect # From architecture
+./scripts/swarm-orchestrator.sh developer # From implementation
+```
+
+</details>
+
+<details>
+<summary><strong>Can multiple developers work simultaneously?</strong></summary>
+
+Yes, with branch-based workflows:
+
+1. Each developer creates a feature branch
+2. Each branch has its own `.swarm/` directory
+3. Artifacts are branch-specific
+4. Merge artifacts along with code
+
+```bash
+git checkout -b feature/my-feature
+./scripts/init-swarm.sh
+# Run HSIS workflow
+git add .swarm/ docs/ src/ tests/
+git commit -m "feat: complete feature via HSIS"
+```
+
+</details>
+
+<details>
+<summary><strong>How do I handle circular escalations?</strong></summary>
+
+Circular escalations (PM → Architect → PM → ...) indicate a fundamental requirements issue:
+
+1. **Stop the loop** - Human intervention required
+2. **Review escalation chain** - Check `.swarm/escalations/`
+3. **Identify root cause** - Usually ambiguous requirements
+4. **Resolve at source** - Update intake document
+5. **Restart from PM** - Fresh workflow with clarified requirements
+
+```bash
+# View escalation history
+ls -la .swarm/escalations/
+cat .swarm/escalations/ESC-*.md
+```
+
+</details>
+
+<details>
+<summary><strong>What if an agent produces incorrect output?</strong></summary>
+
+1. **Review the constraint file** - Ensure instructions are clear
+2. **Check input artifacts** - Garbage in = garbage out
+3. **Retry the phase** - Sometimes regeneration helps
+4. **Add explicit instructions** - Be more specific in intake
+5. **Manual intervention** - Edit artifacts directly if needed
+
+```bash
+# Re-run specific phase with verbose output
+VERBOSE=true ./scripts/swarm-orchestrator.sh architect
+```
+
+</details>
+
+<details>
+<summary><strong>How do I customize gate validators?</strong></summary>
+
+Gate validators are in `scripts/`:
+
+```bash
+scripts/
+├── verify-pm-gate.sh        # PM gate validation
+├── verify-architect-gate.sh # Architect gate validation
+└── verify-developer-gate.sh # Developer gate validation
+```
+
+Edit these scripts to add/remove validation rules. Key patterns:
+- Check for required sections with `grep`
+- Validate JSON schema with `jq`
+- Run tests with appropriate test runner
+
+</details>
+
+<details>
+<summary><strong>Can I use HSIS without Docker?</strong></summary>
+
+Yes. Docker is optional for sandboxing Gemini's code execution:
+
+```json
+// In gemini settings, change:
+"tools": {
+  "sandbox": "none"  // Instead of "docker"
+}
+```
+
+Note: This reduces security isolation for PM phase.
+
+</details>
+
+<details>
+<summary><strong>How do I debug slow agent responses?</strong></summary>
+
+Common causes and solutions:
+
+| Cause | Diagnosis | Solution |
+|-------|-----------|----------|
+| Large context | Check token count | Use `/compact` or split task |
+| Rate limiting | Check API response headers | Add delays between calls |
+| Complex reasoning | Normal for architecture | Be patient or simplify |
+| Network issues | Check latency to API | Use faster connection |
+
+```bash
+# Enable timing in orchestrator
+TIMING=true ./scripts/swarm-orchestrator.sh full
+```
+
+</details>
+
+<details>
+<summary><strong>How do I integrate HSIS with CI/CD?</strong></summary>
+
+Example GitHub Actions workflow:
+
+```yaml
+name: HSIS Workflow
+on: [push]
+jobs:
+  hsis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run HSIS
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+        run: |
+          ./scripts/init-swarm.sh
+          ./scripts/swarm-orchestrator.sh full
+```
+
+</details>
+
+<details>
+<summary><strong>Where can I get more help?</strong></summary>
+
+- **Documentation**: [HSIS_IMPLEMENTATION_GUIDE.md](HSIS_IMPLEMENTATION_GUIDE.md)
+- **Configuration**: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+- **Contributing**: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- **Example**: [example2/WALKTHROUGH.md](example2/WALKTHROUGH.md)
+- **Issues**: Open a GitHub issue with the `question` label
+
+</details>
+
 ---
 
 ## Appendix A: Quick Reference
